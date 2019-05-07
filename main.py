@@ -10,8 +10,10 @@ from classifier.LinearClassifier import LinearClassifier
 from classifier.RFClassifier import RFClassifier
 from classifier.SNNClassifier import SNNClassifier
 
+import tensorflow as tf
+
 SAVE = True
-LOAD = False
+LOAD = True
 
 
 def run_for_classifier(classifier: Classifier, one_d: bool, cv: int = None,
@@ -29,7 +31,7 @@ def run_for_classifier(classifier: Classifier, one_d: bool, cv: int = None,
     :param save: If the classifier is to be saved to a file
     :param load: If the classifier is to be loaded from a file
     """
-
+    print("run_for_classifier")
     if train_set is None or test_set is None:
         features_with_label = files_to_features_with_labels(list_files(AUDIO_FILES_DIR))
         train_set, test_set = train_test_split(features_with_label, random_state=SEED, train_size=TRAIN_PERCENT,
@@ -60,14 +62,19 @@ def run_for_classifier(classifier: Classifier, one_d: bool, cv: int = None,
     if not (load and classifier.load(MODELS_DIR + classifier.get_classifier_name() + DUMP_EXT)):
         print("Training " + classifier.get_classifier_name())
         classifier.train(features_train, labels_train)
-        if save:
-            if not os.path.isdir(MODELS_DIR):
-                os.mkdir(MODELS_DIR)
-            classifier.save(MODELS_DIR + classifier.get_classifier_name() + DUMP_EXT)
-            print("Saved " + classifier.get_classifier_name())
+        #if save:
+        if not os.path.isdir(MODELS_DIR):
+            os.mkdir(MODELS_DIR)
+        classifier.save(MODELS_DIR + classifier.get_classifier_name() + DUMP_EXT)
+        print("Saved " + classifier.get_classifier_name())
     else:
         print("Loaded " + classifier.get_classifier_name())
-
+    print("ModePath:"+MODELS_DIR + classifier.get_classifier_name() + DUMP_EXT)
+    #classMode = classifier.get_model()
+    #classMode.save_weights("cnn_model_weight.h5")
+    #json_string = classMode.to_json()
+    #open('cnn_model_json.json','w').write(json_string)
+    #classMode.save("cnn_model.h5")
     # Per file predictions
     print("Predicting on files...")
     predictions = []
@@ -98,7 +105,8 @@ def run_for_classifier(classifier: Classifier, one_d: bool, cv: int = None,
     samples_features = extract_features(transformed_test_set)
     samples_predictions = classifier.predict(samples_features)
     samples_test_labels = extract_labels(transformed_test_set)
-
+    #prediction = classMode.predict(samples_features)
+    #print("New Test accuracy - files : " + str(get_accuracy(predictions, test_labels)))
     print("Test accuracy - files : " + str(get_accuracy(predictions, test_labels)))
     print("Test accuracy - samples : " + str(get_accuracy(samples_predictions, samples_test_labels)))
 
@@ -120,6 +128,7 @@ def main(args: List[str] = None):
         classifier = SNNClassifier(batch_size=128, num_epochs=300, verbose=1)  # Shallow Neural Net
     elif args[0] == "svc":
         classifier = LinearClassifier(c=1, verbose=1)  # Linear SVM
+        print("svc")
     else:
         classifier = CNNClassifier(batch_size=128, num_epochs=300, verbose=1)  # Convolutional Neural Net
         one_d = False

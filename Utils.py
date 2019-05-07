@@ -1,17 +1,86 @@
 import os
 import sys
+import struct
 from inspect import getmembers, isfunction
 from typing import Iterable, Tuple, Any, Dict
+
+import soundfile
+import config as cfg
 
 import librosa
 import numpy as np
 from sklearn.metrics import accuracy_score
-
+from keras.utils import np_utils
 from Settings import *
+import pandas as pd
+
+
 
 gender_dict: Dict[str, int] = None
 min_shape: int = sys.maxsize
 
+def convertPCM(destPath, srcPath):
+    #print(srcPath)
+    outPath = destPath
+    fout = open(outPath,'wb') #用二进制的写入模式
+    #fout.write(struct.pack('4s','\x66\x6D\x74\x20'))
+    #写入一个长度为4的串，这个串的二进制内容为 66 6D 74 20
+    #Riff_flag,afd,fad,afdd, = struct.unpack('4c',fin.read(4))
+    #读入四个字节，每一个都解析成一个字母
+    #open(sys.argv[4],'wb').write(struct.pack('4s','fmt '))
+    #将字符串解析成二进制后再写入
+    #open(sys.argv[4],'wb').write('\x3C\x9C\x00\x00\x57')
+    #直接写入二进制内容：3C 9C 00 00 57
+    #fout.write(struct.pack('i',6000)) #写入6000的二进制形式
+    #check whether inFile has head-Info
+    inPath= srcPath
+    fin = open(inPath,'rb')
+    Riff_flag, = struct.unpack('4s',fin.read(4))
+    if Riff_flag == 'RIFF':
+        #print("%s have head" % inPath)
+        fin.close()
+        #sys.exit(0)
+    else:
+        #print("%s no head" % inPath)
+        fin.close()
+        #采样率
+        sampleRate = int(16000)
+        #bit位
+        bits = int(16)
+        fin = open(inPath,'rb')
+        startPos = fin.tell()
+        fin.seek(0,os.SEEK_END)
+        endPos = fin.tell()
+        sampleNum = int(endPos - startPos)
+        #print(sampleNum)
+        #headInfo = geneHeadInfo(sampleRate,bits,sampleNum)
+        #fout.write(headInfo)
+        fout.write('\x52\x49\x46\x46'.encode())
+        fout.write(struct.pack('i',sampleNum + 36))
+        #fout.write(fileLength)
+        fout.write('\x57\x41\x56\x45\x66\x6D\x74\x20\x10\x00\x00\x00\x01\x00\x01\x00'.encode())
+        fout.write(struct.pack('i',sampleRate))
+        fout.write(struct.pack('i',int(sampleRate * bits / 8)))
+        fout.write('\x02\x00'.encode())
+        fout.write(struct.pack('H',bits))
+        fout.write('\x64\x61\x74\x61'.encode())
+        fout.write(struct.pack('i',sampleNum))
+        fin.seek(os.SEEK_SET)
+        fout.write(fin.read())
+        fin.close()
+        fout.close()
+
+def read_audio(path, target_fs=None):
+    if path.upper().endswith(".PCM"):
+        convertPCM(TEMP_WAV, path)
+        path = TEMP_WAV
+    (audio, fs) = soundfile.read(path)
+    if audio.ndim > 1:
+        audio = np.mean(audio, axis=1)
+    if target_fs is not None and fs != target_fs:
+        audio = librosa.resample(audio, orig_sr=fs, target_sr=target_fs)
+        fs = target_fs
+    return audio, fs
 
 def audio_to_features(filename: str, n_features: int = FEATURES_NUMBER) -> np.ndarray:
     """
@@ -20,13 +89,14 @@ def audio_to_features(filename: str, n_features: int = FEATURES_NUMBER) -> np.nd
     :param n_features: The number of features to extract
     :return: An ndarray of features
     """
-    data, samplerate = librosa.load(filename, sr=None)
+    #data, samplerate = librosa.load(filename, sr=None)
+    fs = cfg.sample_rate
+    data, samplerate = read_audio(filename, target_fs=fs)
     mfcc_features = np.asarray(librosa.feature.mfcc(data, samplerate, n_mfcc=n_features))
     global min_shape
     if mfcc_features.shape[1] < min_shape:  # Keep track of min_shape for 2D input
         min_shape = mfcc_features.shape[1]
     return mfcc_features.transpose()
-
 
 def save_nparray(arr: np.ndarray, filename: str) -> None:
     """
@@ -74,12 +144,17 @@ def file_to_features_with_labels(filename: str) -> Any:
     :param filename: The filename
     :return: A tuple (features, label)
     """
+    #print(filename);
     file_path_split = filename.split(PATH_SEPARATOR)
-    speaker_id = file_path_split[len(file_path_split) - 1].split(FILE_ID_SEPARATOR)[0].strip()
+    #speaker_id = file_path_split[len(file_path_split) - 1].split(FILE_ID_SEPARATOR)[0].strip()
+    speaker_id = file_path_split[len(file_path_split) - 2].strip()[1:]
+    #if speaker_id == "TJSO" :
+    #print(speaker_id)
     global gender_dict
     if gender_dict is None:
         get_genders_dict()
     label = gender_dict[speaker_id]
+    #print(filename)
     features = audio_to_features(filename)
     return features, label
 
@@ -203,6 +278,41 @@ def files_to_features_with_labels(filenames: Iterable[str]) -> np.ndarray:
 
     return features_with_label
 
+def pre_files_to_features_with_labels(filenames: Iterable[str]) -> np.ndarray:
+    """
+    Extract features and labels from a list of files.
+    :param filenames: The filenames to use
+    :return: An array of (features, label) tuples
+    """
+    if os.path.isfile(FEATURES_WITH_LABEL_FILE):
+        features_with_label = np.asarray([file_to_features_with_labels(file) for file in filenames])
+        if not os.path.isfile(MIN_FEATURES_FILE) or not os.path.isfile(MAX_FEATURES_FILE):
+            flattened_features = flatten(extract_features(features_with_label))
+            min_f = flattened_features.min(axis=0)
+            #save_nparray(min_f, MIN_FEATURES_FILE)
+            max_f = flattened_features.max(axis=0)
+            #save_nparray(max_f, MAX_FEATURES_FILE)
+        else:
+            min_f = load_nparray(MIN_FEATURES_FILE)
+            max_f = load_nparray(MAX_FEATURES_FILE)
+
+        # Normalize the features
+        features_with_label = np.asarray(list(
+            map(lambda feat_label_tuple: (
+                np.asarray(list(map(lambda sample: (sample - min_f) / (max_f - min_f), feat_label_tuple[0]))),
+                feat_label_tuple[1]),
+                features_with_label)))
+
+    else:
+        features_with_label = load_nparray(FEATURES_WITH_LABEL_FILE)
+
+    return features_with_label
+
+def f(path):
+    #if path.endswith(AUDIO_EXT) == False and path.endswith(AUDIO_EXT_FLAC) == False and path.endswith(AUDIO_EXT_MP3) == False and path.endswith(AUDIO_EXT_PCM) == False:
+    if path.upper().endswith(AUDIO_EXT) == False:
+        return False
+    return True
 
 def list_files(dir_name: str, ext=AUDIO_EXT) -> np.ndarray:
     """
@@ -212,7 +322,7 @@ def list_files(dir_name: str, ext=AUDIO_EXT) -> np.ndarray:
     :return: The array of filenames
     """
     return np.asarray(list(map(lambda path: path.replace("\\", PATH_SEPARATOR),
-                               filter(lambda path: path.endswith(ext),
+                               filter(lambda path: f(path),
                                       [os.path.join(dp, f) for dp, dn, fn in os.walk(dir_name) for f in fn]))))
 
 

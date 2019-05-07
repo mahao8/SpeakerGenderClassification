@@ -23,7 +23,7 @@ class ConstantClassifier(Classifier):
         return np.asarray(scores)
 
     def get_classifier_name(self) -> str:
-        return "ConstantClassifier"
+        return "ConstantClassifierTimit"
 
     def predict(self, features: np.ndarray) -> np.ndarray:
         return np.array(list(map(lambda f: M_LABEL, features)))

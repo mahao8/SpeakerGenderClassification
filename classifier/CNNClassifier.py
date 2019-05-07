@@ -95,6 +95,8 @@ class CNNClassifier(NNClassifier):
                                  kernel_initializer=ks.initializers.glorot_normal(seed=SEED)))
             self.model.add(Activation("sigmoid"))
             print(self.model.summary())
+            #self.model.save_weights("model_cnn.h5")
+            print("getModeCNN")
         return self.model
 
     def get_classifier_name(self) -> str:

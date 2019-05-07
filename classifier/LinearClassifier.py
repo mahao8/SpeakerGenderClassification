@@ -7,7 +7,7 @@ from sklearn.svm import LinearSVC
 from Settings import N_JOBS
 from Utils import clamp, inherit_docstrings
 from classifier.Classifier import Classifier
-
+from sklearn.utils import shuffle
 
 @inherit_docstrings
 class LinearClassifier(Classifier):
@@ -32,13 +32,16 @@ class LinearClassifier(Classifier):
         return scores
 
     def get_classifier_name(self) -> str:
-        return "LinearClassifier - C " + str(self.c)
+        return "LinearClassifier - C" + str(self.c)
 
     def predict(self, features: np.ndarray) -> np.ndarray:
         return clamp(self.classifier.predict(features))
 
     def train(self, features: np.ndarray, labels: np.ndarray) -> None:
+        #X_shuf, Y_shuf = shuffle(features, labels)
+        #X_shuf1, Y_shuf1 = shuffle(X_shuf, Y_shuf)
         self.classifier.fit(features, labels)
+        #self.classifier.fit(X_shuf1, Y_shuf1)
 
     def save(self, filename: str) -> None:
         joblib.dump(self.classifier, filename, compress=5)

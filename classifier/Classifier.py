@@ -20,6 +20,7 @@ class Classifier(ABC):
         :param features: The features to use
         :return: The labels predicted by the classifier
         """
+        print("Save Mode")
         pass
 
     @abstractmethod
